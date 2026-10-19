@@ -4,15 +4,24 @@
 //  1. L'ESP32 dort (deep sleep) et se réveille quand le clapet s'ouvre (capteur reed sur GPIO13).
 //  2. Il attend que le clapet se referme, laisse le courrier se poser.
 //  3. Il prend une photo de l'intérieur avec le flash LED (GPIO4) à intensité réduite.
-//  4. Il envoie la photo en notification sur le téléphone via ntfy, puis se rendort.
+//  4. Il se connecte au Wi-Fi et met l'heure à jour (NTP).
+//  5. Il enregistre la photo et une ligne de journal datée sur la carte micro SD.
+//  6. Il envoie la photo en notification sur le téléphone via ntfy, puis se rendort.
+//
+// Carte SD en mode 1 bit : seules GPIO2, 14 et 15 servent à la carte,
+// ce qui laisse GPIO4 (LED) et GPIO13 (reed) libres.
 //
 // Câblage du capteur reed : une patte sur GPIO13, l'autre sur GND.
-// Aimant sur le clapet : clapet fermé = reed fermé = GPIO13 à LOW.
+// GPIO13 est aussi la ligne D3 de la carte SD : elle doit être à HIGH quand la carte
+// démarre, donc le contact doit être OUVERT quand le clapet est fermé
+// (voir NIVEAU_CLAPET_OUVERT dans config.h et le README).
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <SD_MMC.h>
+#include <time.h>
 #include "esp_camera.h"
 #include "driver/rtc_io.h"
 #include "config.h"
@@ -40,13 +49,16 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
+#define DOSSIER_SD   "/courrier"
+#define JOURNAL_SD   "/courrier/journal.csv"
+
 // Conservé pendant le deep sleep : vrai si on s'est endormi clapet ouvert
 RTC_DATA_ATTR bool attenteFermeture = false;
 RTC_DATA_ATTR uint32_t nbCourriers = 0;
 
 // ---------- Clapet ----------
 bool clapetOuvert() {
-  return digitalRead(BROCHE_REED) == HIGH;
+  return digitalRead(BROCHE_REED) == NIVEAU_CLAPET_OUVERT;
 }
 
 bool attendreFermeture(uint32_t delaiMaxMs) {
@@ -145,6 +157,25 @@ bool connecterWifi(uint32_t delaiMaxMs) {
   return true;
 }
 
+// Heure valide = synchronisée au moins une fois (l'horloge interne continue pendant le sommeil)
+bool heureValide() {
+  return time(nullptr) > 1700000000;  // après novembre 2023
+}
+
+void synchroniserHeure(uint32_t delaiMaxMs) {
+  configTzTime(FUSEAU_HORAIRE, "pool.ntp.org", "time.google.com");
+  uint32_t debut = millis();
+  struct tm t;
+  while (!getLocalTime(&t, 100)) {
+    if (millis() - debut > delaiMaxMs) {
+      Serial.println("Attention : heure NTP non reçue");
+      return;
+    }
+  }
+  Serial.printf("Heure : %02d/%02d/%04d %02d:%02d:%02d\n",
+                t.tm_mday, t.tm_mon + 1, t.tm_year + 1900, t.tm_hour, t.tm_min, t.tm_sec);
+}
+
 // Envoie une notification ntfy, avec la photo en pièce jointe si fb n'est pas nul.
 // Les en-têtes HTTP restent sans accents (ASCII obligatoire).
 bool envoyerNtfy(const char* titre, const char* message, camera_fb_t* fb) {
@@ -169,8 +200,69 @@ bool envoyerNtfy(const char* titre, const char* message, camera_fb_t* fb) {
   return code == 200;
 }
 
+// ---------- Carte SD ----------
+bool initSD() {
+  // true = mode 1 bit : libère GPIO4 (LED) et GPIO13 (reed)
+  if (!SD_MMC.begin("/sdcard", true)) {
+    Serial.println("Erreur : carte SD absente ou illisible");
+    return false;
+  }
+  if (!SD_MMC.exists(DOSSIER_SD)) SD_MMC.mkdir(DOSSIER_SD);
+  if (!SD_MMC.exists(JOURNAL_SD)) {
+    File f = SD_MMC.open(JOURNAL_SD, FILE_WRITE);
+    if (f) {
+      f.println("numero;date;heure;photo;taille_octets;notification");
+      f.close();
+    }
+  }
+  return true;
+}
+
+// Construit le nom de la photo à partir de la date, ou du numéro si l'heure est inconnue
+String nomPhoto(const struct tm& t, bool avecDate) {
+  char nom[48];
+  if (avecDate) {
+    snprintf(nom, sizeof(nom), DOSSIER_SD "/%04d-%02d-%02d_%02d-%02d-%02d.jpg",
+             t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+  } else {
+    snprintf(nom, sizeof(nom), DOSSIER_SD "/sans-date_%05lu.jpg", (unsigned long)nbCourriers);
+  }
+  return String(nom);
+}
+
+String enregistrerPhoto(camera_fb_t* fb, const struct tm& t, bool avecDate) {
+  String nom = nomPhoto(t, avecDate);
+  File f = SD_MMC.open(nom, FILE_WRITE);
+  if (!f) {
+    Serial.println("Erreur : écriture de la photo impossible");
+    return "";
+  }
+  f.write(fb->buf, fb->len);
+  f.close();
+  Serial.printf("Photo enregistrée : %s\n", nom.c_str());
+  return nom;
+}
+
+void ecrireJournal(const struct tm& t, bool avecDate, const String& photo, size_t taille, bool notifOk) {
+  File f = SD_MMC.open(JOURNAL_SD, FILE_APPEND);
+  if (!f) {
+    Serial.println("Erreur : écriture du journal impossible");
+    return;
+  }
+  char date[16] = "inconnue";
+  char heure[16] = "inconnue";
+  if (avecDate) {
+    strftime(date, sizeof(date), "%d/%m/%Y", &t);
+    strftime(heure, sizeof(heure), "%H:%M:%S", &t);
+  }
+  f.printf("%lu;%s;%s;%s;%u;%s\n", (unsigned long)nbCourriers, date, heure,
+           photo.length() ? photo.c_str() : "aucune", (unsigned)taille, notifOk ? "envoyee" : "echec");
+  f.close();
+}
+
 // ---------- Sommeil ----------
 void allerDormir() {
+  SD_MMC.end();
   esp_camera_deinit();
   eteindreLed();
   WiFi.disconnect(true);
@@ -184,7 +276,7 @@ void allerDormir() {
 
   // Si le clapet est resté ouvert, on se réveillera à sa fermeture ; sinon à la prochaine ouverture
   attenteFermeture = clapetOuvert();
-  int niveauReveil = attenteFermeture ? 0 : 1;
+  int niveauReveil = attenteFermeture ? !NIVEAU_CLAPET_OUVERT : NIVEAU_CLAPET_OUVERT;
   rtc_gpio_pullup_en(BROCHE_REED);
   rtc_gpio_pulldown_dis(BROCHE_REED);
   esp_sleep_enable_ext0_wakeup(BROCHE_REED, niveauReveil);
@@ -199,6 +291,8 @@ void setup() {
   Serial.begin(115200);
   delay(100);
 
+  setenv("TZ", FUSEAU_HORAIRE, 1);
+  tzset();
   rtc_gpio_hold_dis((gpio_num_t)BROCHE_LED);
   rtc_gpio_hold_dis((gpio_num_t)PWDN_GPIO_NUM);
   rtc_gpio_deinit(BROCHE_REED);
@@ -208,10 +302,14 @@ void setup() {
   esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
 
   if (cause != ESP_SLEEP_WAKEUP_EXT0) {
-    // Premier démarrage (mise sous tension ou reset) : notification de test
+    // Premier démarrage (mise sous tension ou reset) : test de la carte SD et notification
     Serial.println("Démarrage de la boîte aux lettres");
+    bool sdOk = initSD();
     if (connecterWifi(15000)) {
-      envoyerNtfy("Boite aux lettres", "Boite aux lettres en service", nullptr);
+      synchroniserHeure(5000);
+      envoyerNtfy("Boite aux lettres",
+                  sdOk ? "Boite aux lettres en service (carte SD OK)"
+                       : "Boite aux lettres en service (carte SD absente)", nullptr);
     }
     allerDormir();
   }
@@ -225,16 +323,37 @@ void setup() {
 
   if (!initCamera()) allerDormir();
   camera_fb_t* fb = prendrePhoto();
+  nbCourriers++;
 
-  if (connecterWifi(15000)) {
-    nbCourriers++;
-    char message[64];
-    snprintf(message, sizeof(message), "Tu as du courrier ! (passage n.%lu)", (unsigned long)nbCourriers);
-    if (!envoyerNtfy("Courrier", message, fb)) {
+  bool wifiOk = connecterWifi(15000);
+  if (wifiOk) synchroniserHeure(5000);
+
+  // Heure du dépôt : NTP si dispo, sinon horloge interne (synchronisée au dernier passage)
+  struct tm t = {};
+  bool avecDate = heureValide();
+  if (avecDate) getLocalTime(&t, 0);
+
+  bool sdOk = initSD();
+  String photo = "";
+  if (sdOk && fb) photo = enregistrerPhoto(fb, t, avecDate);
+
+  bool notifOk = false;
+  if (wifiOk) {
+    char message[96];
+    if (avecDate) {
+      snprintf(message, sizeof(message), "Tu as du courrier ! (passage n.%lu a %02d:%02d)",
+               (unsigned long)nbCourriers, t.tm_hour, t.tm_min);
+    } else {
+      snprintf(message, sizeof(message), "Tu as du courrier ! (passage n.%lu)", (unsigned long)nbCourriers);
+    }
+    notifOk = envoyerNtfy("Courrier", message, fb);
+    if (!notifOk) {
       // Repli : notification sans photo
-      envoyerNtfy("Courrier", "Tu as du courrier ! (photo non envoyee)", nullptr);
+      notifOk = envoyerNtfy("Courrier", "Tu as du courrier ! (photo non envoyee)", nullptr);
     }
   }
+
+  if (sdOk) ecrireJournal(t, avecDate, photo, fb ? fb->len : 0, notifOk);
   if (fb) esp_camera_fb_return(fb);
   allerDormir();
 }

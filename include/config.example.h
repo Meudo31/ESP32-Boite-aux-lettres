@@ -20,3 +20,12 @@
 
 // Temps max d'attente de la fermeture du clapet avant de se rendormir (ms).
 #define ATTENTE_FERMETURE_MS 30000
+
+// Niveau lu sur GPIO13 quand le clapet est OUVERT (le capteur reed relie GPIO13 à GND).
+// 0 = contact fermé quand le clapet s'ouvre (recommandé : obligatoire avec la carte SD,
+//     car GPIO13 est la ligne D3 de la carte et doit rester à HIGH clapet fermé).
+// 1 = contact fermé quand le clapet est fermé (uniquement sans carte SD).
+#define NIVEAU_CLAPET_OUVERT 0
+
+// Fuseau horaire pour dater les courriers (France, heure d'été automatique)
+#define FUSEAU_HORAIRE "CET-1CEST,M3.5.0,M10.5.0/3"

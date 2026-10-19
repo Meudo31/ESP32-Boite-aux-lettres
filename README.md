@@ -1,6 +1,6 @@
 # Boîte aux lettres connectée (ESP32-CAM)
 
-Quand le facteur ouvre le clapet, l'ESP32-CAM se réveille. Il attend que le clapet se referme, prend une photo du courrier avec la LED en flash, et l'envoie sur ton téléphone via l'appli **ntfy**. Il se rendort ensuite jusqu'au passage suivant.
+Quand le facteur ouvre le clapet, l'ESP32-CAM se réveille. Il attend que le clapet se referme, prend une photo du courrier avec la LED en flash, l'enregistre sur la carte micro SD avec la date et l'heure du dépôt, et l'envoie sur ton téléphone via l'appli **ntfy**. Il se rendort ensuite jusqu'au passage suivant.
 
 Le code compile avec PlatformIO (ESP32-CAM AI-Thinker, framework Arduino) mais n'a pas encore été testé sur une vraie carte.
 
@@ -10,7 +10,8 @@ Le code compile avec PlatformIO (ESP32-CAM AI-Thinker, framework Arduino) mais n
 | --- | --- | --- |
 | ESP32-CAM AI-Thinker (caméra OV2640) | Cerveau + caméra + LED flash | 6 à 8 € |
 | Carte de programmation ESP32-CAM-MB (USB) ou adaptateur FTDI 3,3 V | Flasher la carte, qui n'a pas d'USB | 2 à 4 € |
-| Capteur reed (contact magnétique, normalement ouvert) + aimant | Détecter l'ouverture du clapet | 1 à 2 € |
+| Capteur reed + aimant, contact **ouvert quand l'aimant est proche** (voir Câblage) | Détecter l'ouverture du clapet | 1 à 2 € |
+| Carte micro SD de 32 Go maximum, formatée en FAT32 | Archive des photos et journal des dépôts | 5 € |
 | Batterie 18650 + support | Alimentation | 4 à 6 € |
 | Module de charge TP4056 (avec protection) | Recharger la batterie | 1 € |
 | Régulateur faible chute HT7333 (ou MCP1700-3302) | Sortir 3,3 V propres de la batterie | 1 € |
@@ -25,7 +26,9 @@ Le code compile avec PlatformIO (ESP32-CAM AI-Thinker, framework Arduino) mais n
 | Sortie 3,3 V du HT7333 | Broche **3V3** de l'ESP32-CAM |
 | Batterie - (OUT-) | GND |
 
-Place l'aimant sur le clapet et le reed sur le cadre : clapet fermé, le reed est fermé (GPIO13 à LOW). Le clapet ouvert le fait passer à HIGH, et c'est ce qui réveille la carte.
+Place l'aimant sur le clapet et le reed sur le cadre. **Le contact doit être ouvert quand le clapet est fermé** (aimant proche) et se fermer quand le clapet s'ouvre : GPIO13 est aussi la ligne D3 de la carte SD, qui doit rester à HIGH quand la carte démarre. Les capteurs MC-38 existent dans les deux versions : vérifie au multimètre, aimant collé puis éloigné.
+
+Si ton capteur fait l'inverse (contact fermé aimant proche), mets `NIVEAU_CLAPET_OUVERT` à 1 dans `config.h`, mais la carte SD risque alors de ne pas être reconnue clapet fermé. En dernier recours, colle l'aimant de façon à ce qu'il soit proche du capteur quand le clapet est ouvert.
 
 On alimente par la broche 3V3 plutôt que 5V : le régulateur 5 V intégré à la carte consomme en permanence et viderait la batterie. Prévois un condensateur de 470 à 1000 µF entre 3V3 et GND : le Wi-Fi tire des pointes de courant qui font souvent redémarrer l'ESP32-CAM (message « Brownout detector was triggered »).
 
@@ -36,10 +39,26 @@ On alimente par la broche 3V3 plutôt que 5V : le régulateur 5 V intégré à l
 3. Branche la carte sur l'ESP32-CAM-MB et lance `pio run -t upload`, puis `pio device monitor`. Avec un adaptateur FTDI, relie GPIO0 à GND pendant le flash, puis retire le fil et fais un reset.
 4. Au démarrage, tu dois recevoir « Boite aux lettres en service ». Ouvre et referme le contact reed (ou approche puis éloigne l'aimant) : la photo arrive quelques secondes plus tard.
 
+## Carte micro SD
+
+La carte est utilisée en mode 1 bit, ce qui laisse GPIO4 (LED) et GPIO13 (reed) libres. À chaque passage, deux choses sont écrites dans le dossier `courrier` :
+
+- la photo, nommée par la date et l'heure du dépôt, par exemple `2026-10-19_10-42-07.jpg` ;
+- une ligne dans `journal.csv`, que tu peux ouvrir dans Google Sheets ou Excel :
+
+```
+numero;date;heure;photo;taille_octets;notification
+1;19/10/2026;10:42:07;/courrier/2026-10-19_10-42-07.jpg;41236;envoyee
+```
+
+L'heure vient d'Internet (NTP) à chaque passage. Si le Wi-Fi ne répond pas, la photo est quand même enregistrée, datée par l'horloge interne de l'ESP32, qui continue de tourner pendant le sommeil. Si la carte n'a jamais eu l'heure depuis sa mise sous tension, la photo s'appelle `sans-date_00001.jpg`. Au démarrage, la notification indique si la carte SD est bien reconnue.
+
 ## Réglages (`config.h`)
 
 - `LED_INTENSITE` (0 à 255) : la LED à fond surexpose de près. Commence à 60 et ajuste selon la photo.
 - `DELAI_PHOTO_MS` : délai entre la fermeture du clapet et la photo.
+- `NIVEAU_CLAPET_OUVERT` : sens du capteur reed (voir Câblage).
+- `FUSEAU_HORAIRE` : réglé pour la France, heure d'été comprise.
 - `ATTENTE_FERMETURE_MS` : si le clapet reste ouvert plus longtemps que ce délai, la carte se rendort et prend la photo à sa fermeture.
 
 ## Points à vérifier ensemble
@@ -54,6 +73,8 @@ On alimente par la broche 3V3 plutôt que 5V : le régulateur 5 V intégré à l
 Réveil : clapet actionné
 Photo prise : 41236 octets
 Wi-Fi connecté, signal -67 dBm
+Heure : 19/10/2026 10:42:07
+Photo enregistrée : /courrier/2026-10-19_10-42-07.jpg
 Réponse ntfy : 200
 Dodo (réveil quand le clapet s'ouvre)
 ```
