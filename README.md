@@ -7,7 +7,7 @@ Une boîte aux lettres qui prévient sur le téléphone quand le facteur passe. 
 | 1 | [etape-1-notification](etape-1-notification) | Notification « Tu as du courrier ! » à l'ouverture du clapet | ESP32-C3 SuperMini |
 | 2 | [etape-2-photo](etape-2-photo) | Photo du courrier au flash LED, envoyée sur le téléphone | ESP32-CAM |
 | 3 | [etape-3-carte-sd](etape-3-carte-sd) | Archive des photos et journal daté des dépôts sur carte micro SD | ESP32-CAM |
-| Bonus | [bonus](bonus) | Second capteur pour les boîtes à deux portes, panneau solaire | |
+| Bonus | [bonus](bonus) | Copie des notifications par e-mail et sur WhatsApp (prête dans les 3 étapes), second capteur, panneau solaire | |
 
 Les trois étapes utilisent le même capteur reed monté dans le même sens : contact ouvert quand le clapet est fermé. Ce sens est obligatoire à l'étape 3, autant le choisir dès le début.
 

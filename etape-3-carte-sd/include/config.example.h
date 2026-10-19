@@ -29,3 +29,10 @@
 
 // Fuseau horaire pour dater les courriers (France, heure d'été automatique)
 #define FUSEAU_HORAIRE "CET-1CEST,M3.5.0,M10.5.0/3"
+
+// ---------- Bonus : copies de la notification (laisser vide pour désactiver) ----------
+// E-mail : adresse qui reçoit une copie de chaque notification (transférée par ntfy)
+#define EMAIL_ADRESSE      ""
+// WhatsApp via CallMeBot : ton numéro au format international et la clé reçue (voir bonus/README.md)
+#define WHATSAPP_TELEPHONE ""
+#define WHATSAPP_CLE_API   ""

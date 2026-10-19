@@ -25,6 +25,7 @@
 #include "esp_camera.h"
 #include "driver/rtc_io.h"
 #include "config.h"
+#include "bonus_notifications.h"
 
 // ---------- Broches ----------
 #define BROCHE_REED   GPIO_NUM_13
@@ -187,6 +188,7 @@ bool envoyerNtfy(const char* titre, const char* message, camera_fb_t* fb) {
 
   http.addHeader("Title", titre);
   http.addHeader("Tags", "mailbox_with_mail");
+  ajouterEmailNtfy(http);
   int code;
   if (fb) {
     http.addHeader("Filename", "courrier.jpg");
@@ -196,6 +198,8 @@ bool envoyerNtfy(const char* titre, const char* message, camera_fb_t* fb) {
     code = http.POST((uint8_t*)message, strlen(message));
   }
   http.end();
+  // WhatsApp : une seule fois, même si l'envoi de la photo échoue et qu'on retente sans photo
+  if (code == 200 || !fb) envoyerWhatsApp(message);
   Serial.printf("Réponse ntfy : %d\n", code);
   return code == 200;
 }

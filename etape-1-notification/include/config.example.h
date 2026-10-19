@@ -15,3 +15,10 @@
 // 0 = contact fermé quand le clapet s'ouvre (recommandé : même capteur qu'aux étapes 2 et 3).
 // 1 = contact fermé quand le clapet est fermé.
 #define NIVEAU_CLAPET_OUVERT 0
+
+// ---------- Bonus : copies de la notification (laisser vide pour désactiver) ----------
+// E-mail : adresse qui reçoit une copie de chaque notification (transférée par ntfy)
+#define EMAIL_ADRESSE      ""
+// WhatsApp via CallMeBot : ton numéro au format international et la clé reçue (voir bonus/README.md)
+#define WHATSAPP_TELEPHONE ""
+#define WHATSAPP_CLE_API   ""

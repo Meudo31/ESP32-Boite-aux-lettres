@@ -14,6 +14,7 @@
 #include <HTTPClient.h>
 #include "driver/gpio.h"
 #include "config.h"
+#include "bonus_notifications.h"
 
 #define BROCHE_REED   GPIO_NUM_3
 
@@ -51,8 +52,10 @@ bool envoyerNtfy(const char* titre, const char* message) {
   if (!http.begin(client, url)) return false;
   http.addHeader("Title", titre);
   http.addHeader("Tags", "mailbox_with_mail");
+  ajouterEmailNtfy(http);
   int code = http.POST((uint8_t*)message, strlen(message));
   http.end();
+  envoyerWhatsApp(message);
   Serial.printf("Réponse ntfy : %d\n", code);
   return code == 200;
 }
