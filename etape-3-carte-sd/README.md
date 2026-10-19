@@ -1,5 +1,7 @@
 # Étape 3 : archive sur carte micro SD (ESP32-CAM)
 
+Liste d'achat avec les liens : voir le [README principal](../README.md#liste-dachat-par-étape).
+
 Quand le facteur ouvre le clapet, l'ESP32-CAM se réveille. Il attend que le clapet se referme, prend une photo du courrier avec la LED en flash, l'enregistre sur la carte micro SD avec la date et l'heure du dépôt, et l'envoie sur ton téléphone via l'appli **ntfy**. Il se rendort ensuite jusqu'au passage suivant.
 
 Le code compile avec PlatformIO (ESP32-CAM AI-Thinker, framework Arduino) mais n'a pas encore été testé sur une vraie carte.

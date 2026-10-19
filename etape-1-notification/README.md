@@ -1,5 +1,7 @@
 # Étape 1 : la notification (ESP32-C3, sans caméra)
 
+Liste d'achat avec les liens : voir le [README principal](../README.md#liste-dachat-par-étape).
+
 Quand le facteur ouvre le clapet, l'ESP32-C3 se réveille et envoie « Tu as du courrier ! » sur ton téléphone via l'appli **ntfy**. Il se rendort ensuite jusqu'au passage suivant.
 
 Le code compile avec PlatformIO (ESP32-C3 SuperMini, framework Arduino) mais n'a pas encore été testé sur une vraie carte.
