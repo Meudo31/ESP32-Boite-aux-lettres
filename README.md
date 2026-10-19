@@ -1,80 +1,53 @@
-# Boîte aux lettres connectée (ESP32-CAM)
+# Boîte aux lettres connectée
 
-Quand le facteur ouvre le clapet, l'ESP32-CAM se réveille. Il attend que le clapet se referme, prend une photo du courrier avec la LED en flash, l'enregistre sur la carte micro SD avec la date et l'heure du dépôt, et l'envoie sur ton téléphone via l'appli **ntfy**. Il se rendort ensuite jusqu'au passage suivant.
+Une boîte aux lettres qui prévient sur le téléphone quand le facteur passe. Le projet avance par étapes, du plus simple au plus complet ; chaque étape est un projet PlatformIO autonome et peut faire l'objet d'une vidéo.
 
-Le code compile avec PlatformIO (ESP32-CAM AI-Thinker, framework Arduino) mais n'a pas encore été testé sur une vraie carte.
+| Étape | Dossier | Ce que ça fait | Carte |
+| --- | --- | --- | --- |
+| 1 | [etape-1-notification](etape-1-notification) | Notification « Tu as du courrier ! » à l'ouverture du clapet | ESP32-C3 SuperMini |
+| 2 | [etape-2-photo](etape-2-photo) | Photo du courrier au flash LED, envoyée sur le téléphone | ESP32-CAM |
+| 3 | [etape-3-carte-sd](etape-3-carte-sd) | Archive des photos et journal daté des dépôts sur carte micro SD | ESP32-CAM |
+| Bonus | [bonus](bonus) | Second capteur pour les boîtes à deux portes, panneau solaire | |
 
-## Matériel
+Les trois étapes utilisent le même capteur reed monté dans le même sens : contact ouvert quand le clapet est fermé. Ce sens est obligatoire à l'étape 3, autant le choisir dès le début.
 
-| Pièce | Rôle | Prix approx. |
-| --- | --- | --- |
-| ESP32-CAM AI-Thinker (caméra OV2640) | Cerveau + caméra + LED flash | 6 à 8 € |
-| Carte de programmation ESP32-CAM-MB (USB) ou adaptateur FTDI 3,3 V | Flasher la carte, qui n'a pas d'USB | 2 à 4 € |
-| Capteur reed + aimant, contact **ouvert quand l'aimant est proche** (voir Câblage) | Détecter l'ouverture du clapet | 1 à 2 € |
-| Carte micro SD de 32 Go maximum, formatée en FAT32 | Archive des photos et journal des dépôts | 5 € |
-| Batterie 18650 + support | Alimentation | 4 à 6 € |
-| Module de charge TP4056 (avec protection) | Recharger la batterie | 1 € |
-| Régulateur faible chute HT7333 (ou MCP1700-3302) | Sortir 3,3 V propres de la batterie | 1 € |
+## Liste d'achat par étape
 
-## Câblage
+Prix approximatifs ; chaque étape réutilise ce qui a été acheté avant.
 
-| De | Vers |
+### Étape 1 (environ 12 à 16 €)
+
+| Pièce | Prix approx. |
 | --- | --- |
-| Capteur reed, patte 1 | GPIO13 |
-| Capteur reed, patte 2 | GND |
-| Batterie + (sortie TP4056 OUT+) | Entrée du HT7333 |
-| Sortie 3,3 V du HT7333 | Broche **3V3** de l'ESP32-CAM |
-| Batterie - (OUT-) | GND |
+| ESP32-C3 SuperMini | 3 à 4 € |
+| Capteur reed + aimant (contact ouvert aimant proche, à vérifier au multimètre) | 1 à 2 € |
+| Batterie 18650 de marque + support | 4 à 6 € |
+| Module de charge TP4056 avec protection (6 broches, USB-C) | 1 € |
+| Régulateur HT7333 (ou MCP1700-3302) | 1 € |
+| Fils Dupont, petit boîtier étanche | 2 à 4 € |
 
-Place l'aimant sur le clapet et le reed sur le cadre. **Le contact doit être ouvert quand le clapet est fermé** (aimant proche) et se fermer quand le clapet s'ouvre : GPIO13 est aussi la ligne D3 de la carte SD, qui doit rester à HIGH quand la carte démarre. Les capteurs MC-38 existent dans les deux versions : vérifie au multimètre, aimant collé puis éloigné.
+### Étape 2 (environ 8 à 12 € en plus)
 
-Si ton capteur fait l'inverse (contact fermé aimant proche), mets `NIVEAU_CLAPET_OUVERT` à 1 dans `config.h`, mais la carte SD risque alors de ne pas être reconnue clapet fermé. En dernier recours, colle l'aimant de façon à ce qu'il soit proche du capteur quand le clapet est ouvert.
+| Pièce | Prix approx. |
+| --- | --- |
+| ESP32-CAM AI-Thinker (caméra OV2640) | 6 à 8 € |
+| Carte de programmation ESP32-CAM-MB | 2 à 4 € |
+| Condensateur 470 à 1000 µF, 6,3 V ou plus | moins d'1 € |
 
-On alimente par la broche 3V3 plutôt que 5V : le régulateur 5 V intégré à la carte consomme en permanence et viderait la batterie. Prévois un condensateur de 470 à 1000 µF entre 3V3 et GND : le Wi-Fi tire des pointes de courant qui font souvent redémarrer l'ESP32-CAM (message « Brownout detector was triggered »).
+### Étape 3 (environ 5 € en plus)
+
+| Pièce | Prix approx. |
+| --- | --- |
+| Carte micro SD de 32 Go maximum, formatée en FAT32 | 5 € |
+
+### Bonus
+
+| Pièce | Prix approx. |
+| --- | --- |
+| Second capteur reed + aimant | 1 à 2 € |
+| Panneau solaire 6 V, 1 à 2 W | 5 à 10 € |
+| Module de charge solaire CN3791 (à la place du TP4056, optionnel) | 2 à 4 € |
 
 ## Mise en route
 
-1. Installe l'appli **ntfy** sur ton téléphone et abonne-toi à un sujet au nom long et impossible à deviner (exemple : `bal-meudo-7f3k9q2x8w`). Sur le serveur public ntfy.sh, n'importe qui connaissant ce nom peut voir les photos.
-2. Copie `include/config.example.h` en `include/config.h`, puis remplis le Wi-Fi et le sujet ntfy.
-3. Branche la carte sur l'ESP32-CAM-MB et lance `pio run -t upload`, puis `pio device monitor`. Avec un adaptateur FTDI, relie GPIO0 à GND pendant le flash, puis retire le fil et fais un reset.
-4. Au démarrage, tu dois recevoir « Boite aux lettres en service ». Ouvre et referme le contact reed (ou approche puis éloigne l'aimant) : la photo arrive quelques secondes plus tard.
-
-## Carte micro SD
-
-La carte est utilisée en mode 1 bit, ce qui laisse GPIO4 (LED) et GPIO13 (reed) libres. À chaque passage, deux choses sont écrites dans le dossier `courrier` :
-
-- la photo, nommée par la date et l'heure du dépôt, par exemple `2026-10-19_10-42-07.jpg` ;
-- une ligne dans `journal.csv`, que tu peux ouvrir dans Google Sheets ou Excel :
-
-```
-numero;date;heure;photo;taille_octets;notification
-1;19/10/2026;10:42:07;/courrier/2026-10-19_10-42-07.jpg;41236;envoyee
-```
-
-L'heure vient d'Internet (NTP) à chaque passage. Si le Wi-Fi ne répond pas, la photo est quand même enregistrée, datée par l'horloge interne de l'ESP32, qui continue de tourner pendant le sommeil. Si la carte n'a jamais eu l'heure depuis sa mise sous tension, la photo s'appelle `sans-date_00001.jpg`. Au démarrage, la notification indique si la carte SD est bien reconnue.
-
-## Réglages (`config.h`)
-
-- `LED_INTENSITE` (0 à 255) : la LED à fond surexpose de près. Commence à 60 et ajuste selon la photo.
-- `DELAI_PHOTO_MS` : délai entre la fermeture du clapet et la photo.
-- `NIVEAU_CLAPET_OUVERT` : sens du capteur reed (voir Câblage).
-- `FUSEAU_HORAIRE` : réglé pour la France, heure d'été comprise.
-- `ATTENTE_FERMETURE_MS` : si le clapet reste ouvert plus longtemps que ce délai, la carte se rendort et prend la photo à sa fermeture.
-
-## Points à vérifier ensemble
-
-- **Portée Wi-Fi** jusqu'à la boîte : le moniteur série affiche le signal en dBm. En dessous de -80 dBm, la connexion sera instable.
-- **Consommation en sommeil** : sur une ESP32-CAM, compte environ 1 mA ou plus selon la carte, soit quelques semaines à deux mois sur une 18650. C'est à mesurer au multimètre, et ça fera un bon sujet de Short.
-- **Pièces jointes ntfy.sh** : sur le serveur public, elles expirent au bout de quelques heures. L'appli les télécharge sur le téléphone à la réception.
-
-## Ce qui se passe à chaque passage (moniteur série)
-
-```
-Réveil : clapet actionné
-Photo prise : 41236 octets
-Wi-Fi connecté, signal -67 dBm
-Heure : 19/10/2026 10:42:07
-Photo enregistrée : /courrier/2026-10-19_10-42-07.jpg
-Réponse ntfy : 200
-Dodo (réveil quand le clapet s'ouvre)
-```
+Chaque dossier a son propre README avec le câblage et la mise en route. Dans tous les cas : copier `include/config.example.h` en `include/config.h`, remplir le Wi-Fi et le sujet ntfy, puis `pio run -t upload` depuis le dossier de l'étape. Le fichier `config.h` est exclu du dépôt.
